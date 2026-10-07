@@ -106,6 +106,10 @@ pub const OPTION_SHOW_VIRTUAL_MOUSE: &str = "show-virtual-mouse";
 pub const OPTION_SHOW_VIRTUAL_JOYSTICK: &str = "show-virtual-joystick";
 pub const OPTION_ENABLE_FLUTTER_HTTP_ON_RUST: &str = "enable-flutter-http-on-rust";
 pub const OPTION_ALLOW_ASK_FOR_NOTE: &str = "allow-ask-for-note";
+// Keyboard shortcut toggling relative mouse mode in a session.
+// Values: "ctrl+shift+m" (default), "ctrl+shift+r", "ctrl+shift+g",
+// "ctrl+shift+space", "none".
+pub const OPTION_RELATIVE_MOUSE_SHORTCUT: &str = "relative-mouse-shortcut";
 
 // built-in options
 pub const OPTION_DISPLAY_NAME: &str = "display-name";

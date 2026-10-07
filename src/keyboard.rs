@@ -42,6 +42,12 @@ static KEYBOARD_HOOKED: AtomicBool = AtomicBool::new(false);
 #[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 static EXIT_SHORTCUT_KEY_DOWN: AtomicBool = AtomicBool::new(false);
 
+// Track key down state for the relative mouse mode toggle shortcut
+// (configurable, default Ctrl+Shift+M). The trigger key press is blocked from
+// being sent to the peer, so the matching key up must be blocked too.
+#[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+static TOGGLE_SHORTCUT_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+
 // Track whether relative mouse mode is currently active.
 // This is set by Flutter via set_relative_mouse_mode_state() and checked
 // by the rdev grab loop to determine if exit shortcuts should be processed.
@@ -565,6 +571,85 @@ fn can_exit_relative_mouse_mode_from_grab_loop() -> bool {
     crate::common::is_support_relative_mouse_mode_num(lc.version)
 }
 
+/// Trigger key of a relative mouse mode toggle shortcut chord.
+/// An empty option selects the default `Ctrl+Shift+M` chord.
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn toggle_shortcut_trigger_key_from(value: &str) -> Option<Key> {
+    match value {
+        "" | "ctrl+shift+m" => Some(Key::KeyM),
+        "ctrl+shift+r" => Some(Key::KeyR),
+        "ctrl+shift+g" => Some(Key::KeyG),
+        "ctrl+shift+space" => Some(Key::Space),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn toggle_shortcut_trigger_key() -> Option<Key> {
+    toggle_shortcut_trigger_key_from(&crate::ui_interface::get_option(
+        base::config::keys::OPTION_RELATIVE_MOUSE_SHORTCUT,
+    ))
+}
+
+/// Check if the configured toggle shortcut for relative mouse mode matches.
+/// The chord is always Ctrl+Shift plus the configured trigger key, so it never
+/// collides with the exit shortcut (Ctrl+Alt / Cmd+G).
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn is_toggle_relative_mouse_shortcut(key: Key) -> bool {
+    if toggle_shortcut_trigger_key() != Some(key) {
+        return false;
+    }
+    let modifiers = MODIFIERS_STATE.lock().unwrap();
+    let ctrl = *modifiers.get(&Key::ControlLeft).unwrap_or(&false)
+        || *modifiers.get(&Key::ControlRight).unwrap_or(&false);
+    let shift = *modifiers.get(&Key::ShiftLeft).unwrap_or(&false)
+        || *modifiers.get(&Key::ShiftRight).unwrap_or(&false);
+    ctrl && shift
+}
+
+/// Whether the toggle shortcut may be processed in the rdev grab loop.
+/// Unlike the exit shortcut this does not require the mode to be active.
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+#[inline]
+fn can_toggle_relative_mouse_mode_from_grab_loop() -> bool {
+    let Some(session) = flutter::get_cur_session() else {
+        return false;
+    };
+
+    // Only for remote desktop sessions.
+    if !session.is_default() {
+        return false;
+    }
+
+    // Must have keyboard permission and not be in view-only mode.
+    if !*session.server_keyboard_enabled.read().unwrap() {
+        return false;
+    }
+    // Mirrors RelativeMouseModel.isSupported: no relative mode with Linux peers.
+    if session.peer_platform().eq_ignore_ascii_case("linux") {
+        return false;
+    }
+    let lc = session.lc.read().unwrap();
+    if lc.view_only.v {
+        return false;
+    }
+
+    // Peer must support relative mouse mode.
+    crate::common::is_support_relative_mouse_mode_num(lc.version)
+}
+
+/// Notify Flutter to toggle relative mouse mode.
+#[cfg(feature = "flutter")]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn notify_toggle_relative_mouse_mode() {
+    let session_id = flutter::get_cur_session_id();
+    flutter::push_session_event(&session_id, "toggle_relative_mouse_mode", vec![]);
+}
+
 #[cfg(feature = "flutter")]
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 #[inline]
@@ -588,6 +673,15 @@ fn should_block_relative_mouse_shortcut(key: Key, is_press: bool) -> bool {
         return true;
     }
 
+    // Same for the toggle shortcut trigger key (configurable, default Ctrl+Shift+M).
+    if !is_press
+        && TOGGLE_SHORTCUT_KEY_DOWN.load(Ordering::SeqCst)
+        && Some(key) == toggle_shortcut_trigger_key()
+    {
+        TOGGLE_SHORTCUT_KEY_DOWN.store(false, Ordering::SeqCst);
+        return true;
+    }
+
     // Exit relative mouse mode shortcuts:
     // - macOS: Cmd+G
     // - Windows/Linux: Ctrl+Alt
@@ -601,6 +695,21 @@ fn should_block_relative_mouse_shortcut(key: Key, is_press: bool) -> bool {
             // This prevents retriggering on OS key-repeat.
             if !EXIT_SHORTCUT_KEY_DOWN.swap(true, Ordering::SeqCst) {
                 notify_exit_relative_mouse_mode();
+            }
+        }
+        return true;
+    }
+
+    // Toggle relative mouse mode shortcut (configurable, default Ctrl+Shift+M).
+    if is_toggle_relative_mouse_shortcut(key) {
+        if !can_toggle_relative_mouse_mode_from_grab_loop() {
+            return false;
+        }
+        if is_press {
+            // Only trigger on transition from "not pressed" to "pressed".
+            // This prevents retriggering on OS key-repeat.
+            if !TOGGLE_SHORTCUT_KEY_DOWN.swap(true, Ordering::SeqCst) {
+                notify_toggle_relative_mouse_mode();
             }
         }
         return true;
@@ -1637,5 +1746,34 @@ pub mod input_source {
                 CONFIG_INPUT_SOURCE_2_TIP.to_string(),
             ),
         ]
+    }
+}
+
+#[cfg(test)]
+#[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_toggle_shortcut_trigger_key_from() {
+        assert_eq!(toggle_shortcut_trigger_key_from(""), Some(Key::KeyM));
+        assert_eq!(
+            toggle_shortcut_trigger_key_from("ctrl+shift+m"),
+            Some(Key::KeyM)
+        );
+        assert_eq!(
+            toggle_shortcut_trigger_key_from("ctrl+shift+r"),
+            Some(Key::KeyR)
+        );
+        assert_eq!(
+            toggle_shortcut_trigger_key_from("ctrl+shift+g"),
+            Some(Key::KeyG)
+        );
+        assert_eq!(
+            toggle_shortcut_trigger_key_from("ctrl+shift+space"),
+            Some(Key::Space)
+        );
+        assert_eq!(toggle_shortcut_trigger_key_from("none"), None);
+        assert_eq!(toggle_shortcut_trigger_key_from("unknown"), None);
     }
 }

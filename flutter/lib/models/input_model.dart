@@ -1263,6 +1263,42 @@ class InputModel {
     _relativeMouse.setRelativeMouseMode(false);
   }
 
+  /// Toggle relative mouse mode and release all modifier keys to the remote.
+  /// Called for the configurable toggle shortcut (default Ctrl+Shift+M)
+  /// detected in the Rust rdev grab loop. The shortcut may have left modifiers
+  /// held down on the remote, see [exitRelativeMouseModeWithKeyRelease].
+  void toggleRelativeMouseModeWithKeyRelease() {
+    if (isViewOnly || isViewCamera) return;
+
+    final modifiersToRelease = [
+      'Control_L',
+      'Control_R',
+      'Alt_L',
+      'Alt_R',
+      'Shift_L',
+      'Shift_R',
+      'Meta_L', // Command/Super left
+      'Meta_R', // Command/Super right
+    ];
+
+    for (final key in modifiersToRelease) {
+      bind.sessionInputKey(
+        sessionId: sessionId,
+        name: key,
+        down: false,
+        press: false,
+        alt: false,
+        ctrl: false,
+        shift: false,
+        command: false,
+      );
+    }
+
+    resetModifiers();
+
+    _relativeMouse.toggleRelativeMouseMode();
+  }
+
   void disposeRelativeMouseMode() {
     _relativeMouse.dispose();
     onRelativeMouseModeDisabled = null;

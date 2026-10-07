@@ -469,6 +469,9 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'exit_relative_mouse_mode') {
         // Handle exit shortcut from rdev grab loop (Ctrl+Alt on Win/Linux, Cmd+G on macOS)
         parent.target?.inputModel.exitRelativeMouseModeWithKeyRelease();
+      } else if (name == 'toggle_relative_mouse_mode') {
+        // Handle toggle shortcut from rdev grab loop (configurable, default Ctrl+Shift+M)
+        parent.target?.inputModel.toggleRelativeMouseModeWithKeyRelease();
       } else {
         debugPrint('Event is not handled in the fixed branch: $name');
       }
@@ -1349,7 +1352,8 @@ class FfiModel with ChangeNotifier {
     parent.target?.dialogManager.dismissAll();
     _pi.version = evt['version'];
     // Note: Relative mouse mode is NOT auto-enabled on connect.
-    // Users must manually enable it via toolbar or keyboard shortcut (Ctrl+Alt+Shift+M).
+    // Users must manually enable it via toolbar or the configurable
+    // keyboard shortcut (relative-mouse-shortcut, default Ctrl+Shift+M).
     //
     // For desktop/webDesktop, keyboard mode initialization is handled later by
     // checkDesktopKeyboardMode() which may change the mode if not supported,

@@ -319,6 +319,13 @@ const int kMaxRelativeMouseDelta = 10000;
 /// intentional quick toggles but large enough to prevent accidental double-triggers.
 const int kRelativeMouseModeToggleDebounceMs = 150;
 
+/// Option key of the configurable shortcut toggling relative mouse mode.
+/// Values: [kDefaultRelativeMouseShortcut], 'ctrl+shift+r', 'ctrl+shift+g',
+/// 'ctrl+shift+space', 'none'. Must stay in sync with
+/// `OPTION_RELATIVE_MOUSE_SHORTCUT` in `libs/base/src/config/keys.rs`.
+const String kKeyRelativeMouseShortcut = 'relative-mouse-shortcut';
+const String kDefaultRelativeMouseShortcut = 'ctrl+shift+m';
+
 // incomming (should be incoming) is kept, because change it will break the previous setting.
 const String kKeyPrinterIncomingJobAction = 'printer-incomming-job-action';
 const String kValuePrinterIncomingJobDismiss = 'dismiss';

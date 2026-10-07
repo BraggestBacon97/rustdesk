@@ -1951,6 +1951,8 @@ class _DisplayState extends State<_Display> {
       imageQuality(context),
       codec(context),
       if (isDesktop) trackpadSpeed(context),
+      if (isDesktop && !(isLinux && bind.mainCurrentIsWayland()))
+        relativeMouseShortcut(context),
       if (!isWeb) privacyModeImpl(context),
       other(context),
     ]).marginOnly(bottom: _kListViewBottomMargin);
@@ -2079,6 +2081,33 @@ class _DisplayState extends State<_Display> {
         value: curSpeed,
         onDebouncer: onDebouncer,
       ),
+    ]);
+  }
+
+  Widget relativeMouseShortcut(BuildContext context) {
+    const labels = {
+      'ctrl+shift+m': 'Ctrl+Shift+M',
+      'ctrl+shift+r': 'Ctrl+Shift+R',
+      'ctrl+shift+g': 'Ctrl+Shift+G',
+      'ctrl+shift+space': 'Ctrl+Shift+Space',
+      'none': 'None',
+    };
+    final saved = bind.mainGetOptionSync(key: kKeyRelativeMouseShortcut);
+    final groupValue = labels.containsKey(saved)
+        ? saved
+        : kDefaultRelativeMouseShortcut;
+
+    return _Card(title: 'Relative mouse mode shortcut', children: [
+      for (final value in labels.keys)
+        _Radio(context,
+            value: value,
+            groupValue: groupValue,
+            label: labels[value]!,
+            onChanged: (value) async {
+              await bind.mainSetOption(
+                  key: kKeyRelativeMouseShortcut, value: value);
+              setState(() {});
+            }),
     ]);
   }
 

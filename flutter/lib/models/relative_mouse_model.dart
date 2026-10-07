@@ -184,6 +184,10 @@ class RelativeMouseModel {
   // the corresponding key up to avoid orphan key up events being sent to remote.
   bool _exitShortcutKeyDown = false;
 
+  // Track key down state for the configurable toggle shortcut (default
+  // Ctrl+Shift+M), same orphan key up reasoning as for the exit shortcut.
+  bool _toggleShortcutKeyDown = false;
+
   // Callback to cancel external throttle timer when relative mouse mode is disabled.
   VoidCallback? onDisabled;
 
@@ -277,6 +281,55 @@ class RelativeMouseModel {
     return false;
   }
 
+  /// Trigger key of the configured toggle shortcut. Every allowed chord is
+  /// Ctrl+Shift based, so only the trigger key varies with the option value.
+  /// Returns null when the shortcut is disabled or the value is unknown.
+  LogicalKeyboardKey? _toggleShortcutTriggerKey() {
+    final value = bind.mainGetOptionSync(key: kKeyRelativeMouseShortcut);
+    switch (value) {
+      case '':
+      case 'ctrl+shift+m': // default
+        return LogicalKeyboardKey.keyM;
+      case 'ctrl+shift+r':
+        return LogicalKeyboardKey.keyR;
+      case 'ctrl+shift+g':
+        return LogicalKeyboardKey.keyG;
+      case 'ctrl+shift+space':
+        return LogicalKeyboardKey.space;
+      default:
+        return null;
+    }
+  }
+
+  /// Shared helper for the toggle shortcut of relative mouse mode.
+  /// Returns true if the event was handled and should not be forwarded.
+  bool _handleToggleShortcut({
+    required LogicalKeyboardKey logicalKey,
+    required bool isKeyUp,
+    required bool isKeyDown,
+    required bool ctrlPressed,
+    required bool shiftPressed,
+  }) {
+    if (!isDesktop || !keyboardPerm() || isViewCamera()) return false;
+
+    // Only the trigger key up is swallowed: its key down was the one blocked,
+    // while modifier key ups must still reach the remote.
+    if (isKeyUp) {
+      if (!_toggleShortcutKeyDown) return false;
+      if (logicalKey != _toggleShortcutTriggerKey()) return false;
+      _toggleShortcutKeyDown = false;
+      return true;
+    }
+
+    if (!isKeyDown) return false;
+    if (!ctrlPressed || !shiftPressed) return false;
+    if (logicalKey != _toggleShortcutTriggerKey()) return false;
+    if (!isSupported) return false;
+    _toggleShortcutKeyDown = true;
+    toggleRelativeMouseMode();
+    return true;
+  }
+
   bool handleKeyEvent(
     KeyEvent e, {
     required bool ctrlPressed,
@@ -284,13 +337,22 @@ class RelativeMouseModel {
     required bool altPressed,
     required bool commandPressed,
   }) {
-    return _handleExitShortcut(
+    if (_handleExitShortcut(
       logicalKey: e.logicalKey,
       isKeyUp: e is KeyUpEvent,
       isKeyDown: e is KeyDownEvent,
       ctrlPressed: ctrlPressed,
       altPressed: altPressed,
       commandPressed: commandPressed,
+    )) {
+      return true;
+    }
+    return _handleToggleShortcut(
+      logicalKey: e.logicalKey,
+      isKeyUp: e is KeyUpEvent,
+      isKeyDown: e is KeyDownEvent,
+      ctrlPressed: ctrlPressed,
+      shiftPressed: shiftPressed,
     );
   }
 
@@ -298,13 +360,22 @@ class RelativeMouseModel {
   /// Returns true if the event was handled and should not be forwarded.
   bool handleRawKeyEvent(RawKeyEvent e) {
     final modifiers = e.data;
-    return _handleExitShortcut(
+    if (_handleExitShortcut(
       logicalKey: e.logicalKey,
       isKeyUp: e is RawKeyUpEvent,
       isKeyDown: e is RawKeyDownEvent,
       ctrlPressed: modifiers.isControlPressed,
       altPressed: modifiers.isAltPressed,
       commandPressed: modifiers.isMetaPressed,
+    )) {
+      return true;
+    }
+    return _handleToggleShortcut(
+      logicalKey: e.logicalKey,
+      isKeyUp: e is RawKeyUpEvent,
+      isKeyDown: e is RawKeyDownEvent,
+      ctrlPressed: modifiers.isControlPressed,
+      shiftPressed: modifiers.isShiftPressed,
     );
   }
 
