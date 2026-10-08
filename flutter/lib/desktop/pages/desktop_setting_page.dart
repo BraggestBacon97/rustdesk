@@ -1953,6 +1953,7 @@ class _DisplayState extends State<_Display> {
       if (isDesktop) trackpadSpeed(context),
       if (isDesktop && !(isLinux && bind.mainCurrentIsWayland()))
         relativeMouseShortcut(context),
+      cameraRotation(context),
       if (!isWeb) privacyModeImpl(context),
       other(context),
     ]).marginOnly(bottom: _kListViewBottomMargin);
@@ -2106,6 +2107,31 @@ class _DisplayState extends State<_Display> {
             onChanged: (value) async {
               await bind.mainSetOption(
                   key: kKeyRelativeMouseShortcut, value: value);
+              setState(() {});
+            }),
+    ]);
+  }
+
+  Widget cameraRotation(BuildContext context) {
+    const labels = {
+      kDefaultCameraRotation: '0°',
+      '90': '90°',
+      '180': '180°',
+      '270': '270°',
+    };
+    final saved = bind.mainGetOptionSync(key: kKeyCameraRotation);
+    final groupValue = labels.containsKey(saved)
+        ? saved
+        : kDefaultCameraRotation;
+
+    return _Card(title: 'Camera rotation', children: [
+      for (final value in labels.keys)
+        _Radio(context,
+            value: value,
+            groupValue: groupValue,
+            label: labels[value]!,
+            onChanged: (value) async {
+              await bind.mainSetOption(key: kKeyCameraRotation, value: value);
               setState(() {});
             }),
     ]);

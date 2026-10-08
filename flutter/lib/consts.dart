@@ -326,6 +326,12 @@ const int kRelativeMouseModeToggleDebounceMs = 150;
 const String kKeyRelativeMouseShortcut = 'relative-mouse-shortcut';
 const String kDefaultRelativeMouseShortcut = 'ctrl+shift+m';
 
+/// Option key of the sender-side camera rotation in degrees.
+/// Values: [kDefaultCameraRotation], '90', '180', '270'. Must stay in sync
+/// with `OPTION_CAMERA_ROTATION` in `libs/base/src/config/keys.rs`.
+const String kKeyCameraRotation = 'camera-rotation';
+const String kDefaultCameraRotation = '0';
+
 // incomming (should be incoming) is kept, because change it will break the previous setting.
 const String kKeyPrinterIncomingJobAction = 'printer-incomming-job-action';
 const String kValuePrinterIncomingJobDismiss = 'dismiss';

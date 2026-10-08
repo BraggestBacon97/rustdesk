@@ -110,6 +110,9 @@ pub const OPTION_ALLOW_ASK_FOR_NOTE: &str = "allow-ask-for-note";
 // Values: "ctrl+shift+m" (default), "ctrl+shift+r", "ctrl+shift+g",
 // "ctrl+shift+space", "none".
 pub const OPTION_RELATIVE_MOUSE_SHORTCUT: &str = "relative-mouse-shortcut";
+// Sender-side rotation applied when sharing a camera.
+// Values: "0" (default), "90", "180", "270".
+pub const OPTION_CAMERA_ROTATION: &str = "camera-rotation";
 
 // built-in options
 pub const OPTION_DISPLAY_NAME: &str = "display-name";

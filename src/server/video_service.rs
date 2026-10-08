@@ -554,7 +554,10 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
         );
     };
     let capturer = camera::Cameras::get_capturer(current)?;
-    let (width, height) = (camera.width as usize, camera.height as usize);
+    let (mut width, mut height) = (camera.width as usize, camera.height as usize);
+    if camera_rotation_deg() % 180 == 90 {
+        std::mem::swap(&mut width, &mut height);
+    }
     let origin = (camera.x as i32, camera.y as i32);
     let name = &camera.name;
     let privacy_mode_id = get_privacy_mode_conn_id().unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
@@ -581,6 +584,85 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
         capturer,
     });
 }
+
+fn camera_rotation_deg() -> u16 {
+    if cfg!(any(
+        windows,
+        all(
+            unix,
+            not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+        )
+    )) {
+        match Config::get_option(base::config::keys::OPTION_CAMERA_ROTATION).as_str() {
+            "90" => 90,
+            "180" => 180,
+            "270" => 270,
+            _ => 0,
+        }
+    } else {
+        0
+    }
+}
+
+#[cfg(any(
+    windows,
+    all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    )
+))]
+fn rotate_camera_frame<'a>(
+    frame: scrap::Frame<'a>,
+    rotation: u16,
+    buf: &'a mut Vec<u8>,
+) -> scrap::Frame<'a> {
+    if rotation == 0 {
+        return frame;
+    }
+    fn rotate_rgba(src: &[u8], width: usize, height: usize, rotation: u16) -> Vec<u8> {
+        let mut dst = vec![0u8; src.len()];
+        let (w, h) = (width, height);
+        let dst_w = if rotation % 180 == 90 { h } else { w };
+        for y in 0..h {
+            for x in 0..w {
+                let si = (y * w + x) * 4;
+                let (dx, dy) = match rotation {
+                    90 => (h - 1 - y, x),
+                    180 => (w - 1 - x, h - 1 - y),
+                    _ => (y, w - 1 - x),
+                };
+                let di = (dy * dst_w + dx) * 4;
+                dst[di..di + 4].copy_from_slice(&src[si..si + 4]);
+            }
+        }
+        dst
+    }
+    match frame {
+        scrap::Frame::PixelBuffer(pb) if pb.pixfmt() == scrap::Pixfmt::RGBA => {
+            let (w, h) = (pb.width(), pb.height());
+            *buf = rotate_rgba(pb.data(), w, h, rotation);
+            let (rw, rh) = if rotation % 180 == 90 { (h, w) } else { (w, h) };
+            scrap::Frame::PixelBuffer(scrap::PixelBuffer::new(buf, scrap::Pixfmt::RGBA, rw, rh))
+        }
+        frame => frame,
+    }
+}
+
+#[cfg(not(any(
+    windows,
+    all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    )
+)))]
+fn rotate_camera_frame<'a>(
+    frame: scrap::Frame<'a>,
+    _rotation: u16,
+    _buf: &'a mut Vec<u8>,
+) -> scrap::Frame<'a> {
+    frame
+}
+
 fn get_capturer(
     source: VideoSource,
     current: usize,
@@ -729,6 +811,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut first_frame = true;
     let capture_width = c.width;
     let capture_height = c.height;
+    let camera_rotation = if vs.source.is_monitor() {
+        0
+    } else {
+        camera_rotation_deg()
+    };
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
 
     while sp.ok() {
@@ -799,6 +886,12 @@ fn run(vs: VideoService) -> ResultType<()> {
         let res = match c.frame(spf) {
             Ok(frame) => {
                 repeat_encode_counter = 0;
+                let mut rotate_buf = Vec::new();
+                let frame = if vs.source.is_monitor() {
+                    frame
+                } else {
+                    rotate_camera_frame(frame, camera_rotation, &mut rotate_buf)
+                };
                 if frame.valid() {
                     let screenshot_key = (vs.source, display_idx);
                     let screenshot = SCREENSHOTS.lock().unwrap().remove(&screenshot_key);
@@ -1369,7 +1462,7 @@ pub fn make_display_changed_msg(
     opt_display: Option<DisplayInfo>,
     source: VideoSource,
 ) -> Option<Message> {
-    let display = match opt_display {
+    let mut display = match opt_display {
         Some(d) => d,
         None => match source {
             VideoSource::Monitor => display_service::get_display_info(display_idx)?,
@@ -1378,6 +1471,9 @@ pub fn make_display_changed_msg(
                 .clone(),
         },
     };
+    if matches!(source, VideoSource::Camera) && camera_rotation_deg() % 180 == 90 {
+        std::mem::swap(&mut display.width, &mut display.height);
+    }
     let mut misc = Misc::new();
     misc.set_switch_display(SwitchDisplay {
         display: display_idx as _,
